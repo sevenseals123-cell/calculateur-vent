@@ -83,40 +83,34 @@ with t1:
 
 with t2:
     st.subheader("📋 Plan de Manœuvre")
-    
-    # Indicateurs de Puissance
     c_res1, c_res2 = st.columns(2)
     c_res1.metric("Force Vent à contrer", f"{round(force_vent_t)} T")
     c_res2.metric("Poussée Tug Nécessaire", f"{round(force_requise_rem)} T")
 
-    # LOGIQUE DE RECOMMANDATION DÉTAILLÉE
     if force_requise_rem > bp_total:
-        st.error(f"❌ **ALERTE CRITIQUE** : Puissance de remorquage insuffisante ! Manque {round(force_requise_rem - bp_total)} T de poussée pour maintenir {drift_angle_subi}°.")
+        st.error(f"❌ **ALERTE CRITIQUE** : Puissance de remorquage insuffisante ! Manque {round(force_requise_rem - bp_total)} T.")
     elif force_requise_rem > 0:
         st.warning(f"⚠️ **ACTION REQUISE** : Les remorqueurs doivent compenser activement ({round(force_requise_rem)} T).")
     else:
         st.success("✅ **ÉQUILIBRE** : La vitesse du navire suffit à contrer la dérive.")
 
-    # TACTIQUES DE PLACEMENT (RECOMMANDATIONS COMPLETES)
     with st.expander("📍 Voir le détail du placement et des ordres", expanded=True):
         if secteur_vent == "Travers":
-            st.write(f"**Configuration :** Vent frappant le {type_navire} par le travers.")
             st.markdown(f"""
-            - **Positionnement :** 1 Tug à l'épaulement, 1 au fessier, du côté **sous le vent** (leeward).
-            - **Ordres :** {'Pousser au contact' if type_tug == 'ASD' else 'Capeler sur ligne courte (Tirer)'}.
-            - **Objectif :** Annuler la force de {round(force_vent_t)} T pour éviter l'abattée latérale.
+            - **Positionnement :** 1 Tug à l'épaulement, 1 au fessier, côté **sous le vent**.
+            - **Ordres :** {'Pousser au contact' if type_tug == 'ASD' else 'Capeler sur ligne courte'}.
+            - **Objectif :** Annuler la force latérale de {round(force_vent_t)} T.
             """)
         elif secteur_vent == "Avant":
             st.markdown("""
             - **Positionnement :** Tug principal capelé en 'Center Lead' à l'avant.
-            - **Ordres :** 'Steady' ou tirer du côté opposé au vent pour contrôler le Crab Angle.
-            - **Objectif :** Garder le contrôle du pivot avant pour ne pas laisser le vent faire abattre le nez.
+            - **Ordres :** Contrôler l'abattée du nez face au vent.
+            - **Objectif :** Maintenir le Crab Angle sans dérive.
             """)
-        else: # Arrière
+        else:
             st.markdown("""
-            - **Positionnement :** Tug en 'Escort' (Arrière) capelé sur la ligne de foi.
-            - **Ordres :** Travailler en 'Indirect mode' si vitesse > 5 kts pour maximiser le freinage et la stabilité.
-            - **Objectif :** Stabiliser le fessier et prévenir les embardées dues au vent arrière.
+            - **Positionnement :** Tug en 'Escort' (Arrière).
+            - **Ordres :** Stabiliser le fessier contre les embardées.
             """)
 
 # --- SECTION 4 : LIMITES MACHINE ---
@@ -126,9 +120,9 @@ util_machine = (force_vent_t / poussee_machine_t) * 100
 st.write(f"Utilisation moteur face au vent : **{round(util_machine)}%**")
 st.progress(min(util_machine/100, 1.0))
 
-if util_machine > 85:
-    st.error("🚨 **RISQUE DE PERTE DE CONTRÔLE** : Le moteur est à sa limite face au vent. Assistance remorquage obligatoire pour tout changement de cap.")
-
 # --- GRAPHIQUE ---
 st.subheader("📈 Force Remorqueur Requise selon votre Vitesse Surface")
-v_range = np.
+v_range = np.linspace(1, 10, 20)
+f_tug_range = [max(0.0, force_vent_t * (1 - (v / v_critique)**2)) if v < v_critique else 0.0 for v in v_range]
+df_plot = pd.DataFrame({'Vitesse Navire (kn)': v_range, 'Force Tug (T)': f_tug_range})
+st.line_chart(df_plot.set_index('Vitesse Navire (kn)'))
