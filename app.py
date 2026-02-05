@@ -3,79 +3,86 @@ import math
 import numpy as np
 import pandas as pd
 
-# Configuration
-st.set_page_config(page_title="Pilotage - Wind Drift Pro", layout="wide")
+st.set_page_config(page_title="Pilotage Expert - DSS", layout="wide")
+st.title("⚓ Système d'Aide à la Décision : Manœuvre & Navigation")
 
-st.title("🚢 Calculateur de Contrôlabilité Avancé")
-
-# --- SIDEBAR (Caractéristiques Navire) ---
-st.sidebar.header("⚙️ Caractéristiques du Navire")
+# --- SIDEBAR : DONNÉES NAVIRE ---
+st.sidebar.header("⚙️ Caractéristiques Navire")
 lpp = st.sidebar.number_input("Lpp (m)", value=330.0)
-tirant_air = st.sidebar.number_input("Tirant d'air total (m)", value=55.0)
-draft = st.sidebar.number_input("Tirant d'eau actuel (m)", value=12.5)
+tirant_air = st.sidebar.number_input("Tirant d'air (m)", value=55.0)
+draft = st.sidebar.number_input("Tirant d'eau (m)", value=12.5)
 cb = st.sidebar.number_input("Coefficient Cb", value=0.7)
 cp = st.sidebar.slider("Coefficient de porosité (Cp)", 0.6, 1.0, 0.8)
+puissance_max_t = st.sidebar.number_input("Poussée Machine Max (Tonnes)", value=120.0)
 
-# Calcul automatique du fardage latéral (Aw)
 aw_eff = lpp * tirant_air * cp
-st.sidebar.info(f"Fardage latéral estimé : {int(aw_eff)} m²")
 
-# --- ZONE PRINCIPALE ---
-st.subheader("📊 Conditions Environnementales")
-col_input1, col_input2, col_input3 = st.columns(3)
+# --- SECTION 1 : VENT & DÉRIVE (CRAB ANGLE) ---
+st.header("🌬️ Vent & Dynamique de Dérive")
+c1, c2, c3 = st.columns(3)
 
-with col_input1:
+with c1:
     vent_moyen = st.slider("Vent moyen (kn)", 0, 60, 20)
-    facteur_rafale = st.slider("Facteur Rafale", 1.0, 2.0, 1.3, step=0.1)
+    facteur_rafale = st.slider("Facteur Rafale", 1.0, 2.0, 1.3)
     v_eff = vent_moyen * facteur_rafale
+    secteur_vent = st.selectbox("Provenance Vent", ["Travers", "Avant", "Arrière"])
 
-with col_input2:
-    # OPTION SECTEUR DU VENT
-    secteur_vent = st.selectbox(
-        "Provenance du vent (Secteur)",
-        ["Travers (60°-120°)", "De l'avant (20°-60°)", "De l'arrière (120°-160°)"]
-    )
-    # Coefficient correcteur de force selon l'angle (simplifié pour pilotage)
-    coef_angle = 1.0 if "Travers" in secteur_vent else (0.6 if "avant" in secteur_vent else 0.4)
+with c2:
+    # CALCUL DU CRAB ANGLE (Dérive angulaire nécessaire)
+    # Approximation basée sur la force latérale vs vitesse navire
+    v_surface = st.number_input("Vitesse Surface (kn)", value=3.5, min_value=0.1)
+    coef_angle = 1.0 if "Travers" in secteur_vent else (0.6 if "Avant" in secteur_vent else 0.4)
     
-    drift_angle = st.slider("Angle de dérive cible (°)", 0.5, 15.0, 7.0, step=0.5)
+    # Calcul simplifié du Crab Angle théorique
+    crab_angle = math.degrees(math.atan((v_eff * 0.1) / v_surface)) * coef_angle
+    st.metric("Crab Angle Estimé", f"{round(crab_angle, 1)}°")
 
-with col_input3:
-    vitesse_actuelle = st.number_input("Vitesse actuelle (kn)", value=3.5)
-    marge = st.slider("Marge Pilote (kn)", 0.0, 3.0, 1.0)
+with c3:
+    force_vent_t = (0.5 * 1.225 * ((v_eff * 0.514)**2) * aw_eff * coef_angle) / 9806
+    st.metric("Force Vent Latérale", f"{round(force_vent_t)} T")
 
-# --- CALCULS ---
-sw = lpp * draft
-# Coefficient kβ avec prise en compte du secteur du vent
-kb = 0.1 * (cb + 0.5 * draft / lpp) * math.sqrt(aw_eff / sw) * coef_angle
+# --- SECTION 2 : COURANT & VECTEUR RÉEL (SOG/COG) ---
+st.header("🌊 Effet du Courant & Vecteur Fond")
+cc1, cc2, cc3 = st.columns(3)
 
-# Vitesse minimale requise
-v_min = v_eff * math.sqrt(kb / drift_angle)
-v_reco = v_min + marge
+with cc1:
+    v_courant = st.number_input("Vitesse du Courant (kn)", value=1.0)
+    dir_courant = st.selectbox("Direction Courant", ["Portant (Même sens)", "Contraire", "Travers bâbord", "Travers tribord"])
 
-# --- AFFICHAGE ---
-st.divider()
-res1, res2, res3 = st.columns(3)
+with cc2:
+    # Calcul Vitesse Fond (SOG)
+    if "Portant" in dir_courant: sog = v_surface + v_courant
+    elif "Contraire" in dir_courant: sog = v_surface - v_courant
+    else: sog = math.sqrt(v_surface**2 + v_courant**2)
+    st.metric("Vitesse Fond (SOG)", f"{round(sog, 2)} kn")
 
-with res1:
-    st.metric("Vitesse Min. Requise", f"{round(v_min, 2)} kn")
-with res2:
-    st.metric("Vitesse Recommandée", f"{round(v_reco, 2)} kn", delta=f"+{marge} kn")
-with res3:
-    if vitesse_actuelle >= v_min:
-        st.success(f"Statut : MANŒUVRABLE")
+with cc3:
+    # Limite Machine
+    charge_machine = (force_vent_t / puissance_max_t) * 100
+    st.write(f"Utilisation de la puissance : **{round(charge_machine)}%**")
+    st.progress(min(charge_machine/100, 1.0))
+
+# --- SECTION 3 : REMORQUAGE & TACTIQUE ---
+st.header("🚜 Assistance Remorquage")
+t1, t2 = st.columns(2)
+
+with t1:
+    type_tug = st.radio("Type de Remorqueur", ["ASD", "Conventionnel"])
+    bp_dispo = st.number_input("Bollard Pull Total (T)", value=60)
+
+with t2:
+    if charge_machine > 80:
+        st.error("🚨 LIMITE MACHINE ATTEINTE : Le moteur seul ne peut pas contrer le vent. Remorqueurs indispensables.")
+    elif force_vent_t > bp_dispo:
+        st.warning(f"⚠️ CAPACITÉ REMORQUAGE LIMITE : Manque {round(force_vent_t - bp_dispo)} T de poussée.")
     else:
-        st.error(f"Statut : DANGER (Dérive excessive)")
+        st.success("✅ Marges de manœuvre suffisantes.")
 
-# --- GRAPHIQUE ---
-st.subheader("📈 Sensibilité au vent")
-vents_sim = np.linspace(10, 60, 50)
-# On applique le coef_angle ici aussi pour que le graphique soit cohérent
-vitesses_sim = vents_sim * facteur_rafale * math.sqrt(kb / drift_angle)
-
-df_sim = pd.DataFrame({
-    'Vent (knots)': vents_sim,
-    'Vitesse Requise (knots)': vitesses_sim
-})
-
-st.line_chart(df_sim.set_index('Vent (knots)'))
+# --- GRAPHIQUE DE SÉCURITÉ ---
+st.divider()
+st.subheader("📈 Enveloppe de Sécurité : Vitesse Navire vs Force Vent")
+v_range = np.linspace(1, 15, 30)
+# Force nécessaire pour maintenir l'équilibre
+force_req = (force_vent_t / (v_range + 0.1)) * 2 # Relation inverse simplifiée
+df_sec = pd.DataFrame({'Vitesse Navire (kn)': v_range, 'Stabilité Manœuvre (Indice)': force_req})
+st.line_chart(df_sec.set_index('Vitesse Navire (kn)'))
