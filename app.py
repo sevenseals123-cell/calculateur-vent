@@ -3,7 +3,36 @@ import math
 import numpy as np
 import pandas as pd
 
-st.set_page_config(page_title="Pilotage Expert DSS", layout="wide")
+# --- CONFIGURATION DE LA PAGE & ICÔNE ---
+st.set_page_config(
+    page_title="DSS Pilotage - Cpt. Dialmy",
+    page_icon="🚢",
+    layout="wide"
+)
+
+# --- STYLE CSS POUR LE FOOTER ---
+footer_style = """
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #f0f2f6;
+        color: #31333F;
+        text-align: center;
+        padding: 10px;
+        font-size: 14px;
+        font-weight: bold;
+        border-top: 2px solid #0073e6;
+        z-index: 100;
+    }
+    </style>
+    <div class="footer">
+        <p>© 2026 - Développé par Cpt. Dialmy | Système d'Aide à la Décision (DSS) - Expert Pilotage</p>
+    </div>
+"""
+
 st.title("⚓ Système d'Aide à la Décision : Manœuvre & Remorquage")
 
 # --- SIDEBAR : CONFIGURATION DU NAVIRE ---
@@ -23,7 +52,7 @@ defaults = ship_defaults[type_navire]
 
 lpp = st.sidebar.number_input("Lpp (m)", value=330.0)
 tirant_air = st.sidebar.number_input("Tirant d'air total (m)", value=defaults["hair"])
-draft = st.sidebar.number_input("Tirant d'eau (m)", value=12.5)
+draft = st.sidebar.number_input("Tirant d'eau actuel (m)", value=12.5)
 cb = st.sidebar.number_input("Coefficient Cb", value=defaults["cb"])
 cp = st.sidebar.slider("Coefficient de porosité (Cp)", 0.5, 1.0, defaults["cp"])
 puissance_kw = st.sidebar.number_input("Puissance Moteur (kW)", value=45000)
@@ -126,3 +155,9 @@ v_range = np.linspace(1, 10, 20)
 f_tug_range = [max(0.0, force_vent_t * (1 - (v / v_critique)**2)) if v < v_critique else 0.0 for v in v_range]
 df_plot = pd.DataFrame({'Vitesse Navire (kn)': v_range, 'Force Tug (T)': f_tug_range})
 st.line_chart(df_plot.set_index('Vitesse Navire (kn)'))
+
+# --- ESPACE POUR LE FOOTER ---
+st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+# --- AFFICHAGE DU FOOTER ---
+st.markdown(footer_style, unsafe_allow_html=True)
