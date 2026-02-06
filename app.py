@@ -29,7 +29,7 @@ footer_style = """
     }
     </style>
     <div class="footer">
-        <p>© 2026 - Développé par Cpt. Dialmy | Système d'Aide à la Décision (DSS) - Expert Pilotage</p>
+        <p>© 2026 - Développé par Cpt. Dialmy | Système d'Aide à la Décision (DSS) - Aide Pilotage</p>
     </div>
 """
 
