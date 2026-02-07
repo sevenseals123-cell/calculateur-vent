@@ -42,13 +42,10 @@ sw = lpp * draft
 
 st.title("⚓ Système d'Aide à la Décision - Cpt. Dialmy")
 
-with st.expander("📚 Méthodologie & Physique"):
-    st.markdown("Calculs basés sur la pression dynamique $F_w = 0.5 \\rho V^2 A C_x$ et les principes de portance hydrodynamique.")
-
 tabs = st.tabs(["🚀 Navigation (Transit)", "🏗️ Docking Mode (Manœuvre)"])
 
 # ---------------------------------------------------------
-# ONGLET 1 : NAVIGATION (VERSION COMPLÈTE AVEC COURBE)
+# ONGLET 1 : NAVIGATION (Transit & Dérive)
 # ---------------------------------------------------------
 with tabs[0]:
     st.header("🌊 Analyse de Dérive en Transit")
@@ -72,50 +69,52 @@ with tabs[0]:
         st.subheader("🎯 Cible")
         drift_tolere = st.slider("Angle de dérive toléré (°)", 0.5, 15.0, 7.0)
 
-    # Calculs Techniques
+    # Calculs Physiques
     force_vent_t = (0.5 * 1.225 * ((v_eff * 0.514)**2) * aw_eff * coef_angle) / 9806
     kb = 0.1 * (cb + 0.5 * draft / lpp) * math.sqrt(aw_eff / sw) * coef_angle
+    
+    # Vitesse Critique : Vitesse à laquelle la dérive dépasse la tolérance
     v_critique = v_eff * math.sqrt(kb / drift_tolere)
     crab_angle = math.degrees(math.atan((v_eff * 0.15 * coef_angle) / v_surface))
     force_requise_rem = max(0.0, force_vent_t * (1 - (v_surface / v_critique)**2)) if v_surface < v_critique else 0.0
 
     st.divider()
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Force Vent", f"{round(force_vent_t)} T")
-    m2.metric("Crab Angle", f"{round(crab_angle, 1)}°", delta="AU VENT")
-    sog = v_surface + v_courant if dir_courant == "Portant" else (v_surface - v_courant if dir_courant == "Contraire" else v_surface)
-    m3.metric("Vitesse Fond (SOG)", f"{round(sog, 2)} kn")
+    
+    # --- NOUVELLE SECTION : DIAGNOSTIC D'AUTONOMIE ---
+    st.subheader("📋 Diagnostic de Tenue de Route")
+    diag1, diag2 = st.columns([1, 2])
+    
+    with diag1:
+        st.metric("Vitesse Critique", f"{round(v_critique, 1)} kn", help="Vitesse minimale pour tenir la dérive sans aide.")
+        st.metric("Crab Angle", f"{round(crab_angle, 1)}°")
 
-    # GRAPHIQUE D'ANALYSE (La Courbe)
-    st.subheader("📈 Analyse de la Puissance vs Vitesse")
+    with diag2:
+        if v_surface >= v_critique:
+            st.success(f"✅ **Vitesse Suffisante** : À {v_surface} kn, le navire génère assez de portance hydrodynamique pour maintenir la dérive sous les {drift_tolere}°.")
+            st.info(f"Marge de sécurité : {round(v_surface - v_critique, 1)} kn au-dessus du seuil critique.")
+        else:
+            manque_v = round(v_critique - v_surface, 1)
+            st.error(f"⚠️ **Vitesse Insuffisante** : La dérive réelle dépassera {drift_tolere}°. Le navire 'tombe' sous le vent.")
+            st.write(f"Pour stabiliser le navire, vous devez soit :")
+            st.write(f"- Augmenter la vitesse de **{manque_v} kn**.")
+            st.write(f"- Faire appel à une poussée de remorquage de **{round(force_requise_rem)} T**.")
+
+    # GRAPHIQUE D'ANALYSE
+    st.subheader("📈 Courbe de Puissance vs Vitesse")
     v_range = np.linspace(0.5, max(12.0, v_critique + 2), 50)
     f_rem = [max(0.0, force_vent_t * (1 - (v / v_critique)**2)) if v < v_critique else 0.0 for v in v_range]
     df_plot = pd.DataFrame({"Vitesse (kn)": v_range, "Besoin Remorquage (T)": f_rem})
     st.line_chart(df_plot.set_index("Vitesse (kn)"))
 
-    # RECOMMANDATION REMORQUAGE
-    st.subheader("🚜 Remorqueurs en Route")
-    r1, r2 = st.columns([1, 2])
-    with r1:
-        bp_unit = st.number_input("Bollard Pull / Tug (T)", value=60, key="nav_bp")
-        nb_tugs = st.slider("Nombre remorqueurs", 1, 4, 2, key="nav_nb")
-    with r2:
-        if force_requise_rem > (bp_unit * nb_tugs):
-            st.error(f"❌ ALERTE : Puissance insuffisante ! Il manque {round(force_requise_rem - (bp_unit * nb_tugs))} T.")
-        elif force_requise_rem > 0:
-            st.warning(f"⚠️ Assistance requise : Maintenez une poussée de {round(force_requise_rem)} T.")
-        else:
-            st.success("✅ Navire autonome : La portance de la carène suffit à contrer la dérive.")
-
 # ---------------------------------------------------------
-# ONGLET 2 : DOCKING MODE (AVEC TACTIQUES DE PLACEMENT)
+# ONGLET 2 : DOCKING MODE (Manœuvre)
 # ---------------------------------------------------------
 with tabs[1]:
     st.header("🛠️ Docking Mode & Tactiques de Quai")
     dcol1, dcol2 = st.columns(2)
     
     with dcol1:
-        v_dock = st.slider("Vent au quai (kn)", 0, 60, 15)
+        v_dock = st.slider("Vent au quai (kn)", 0, 60, 15, key="dv")
         manoeuvre = st.radio("Opération", ["Accostage (Poussant)", "Appareillage (Plaquant)"])
     with dcol2:
         tug_dock_bp = st.number_input("BP par remorqueur (T)", value=60, key="dock_bp")
@@ -135,19 +134,14 @@ with tabs[1]:
     with t1:
         st.markdown("### 🗺️ Positionnement")
         if nb_tugs_dock >= 2:
-            st.write("- **Tug 1 :** Épaulement Avant.")
-            st.write("- **Tug 2 :** Hanche Arrière.")
+            st.write("- **Tug 1 :** Épaulement Avant / **Tug 2 :** Hanche Arrière.")
         elif nb_tugs_dock == 1:
             st.write("- **Tug unique :** À l'Arrière. Le Bow Thruster gère l'avant.")
-        st.write(f"- **Répartition :** ~{round(force_stat/2)} T à l'avant / ~{round(force_stat/2)} T à l'arrière.")
-
     with t2:
         st.markdown("### ⚙️ Tactique")
         if manoeuvre == "Appareillage (Plaquant)":
-            st.error("🚩 **VENT PLAQUANT** : Travailler à la tire (capelé).")
-            st.write("- Décoller l'arrière en priorité pour libérer l'hélice.")
+            st.error("🚩 **VENT PLAQUANT** : Travailler à la tire (capelé). Décoller l'arrière en priorité.")
         else:
-            st.success("🏁 **VENT POUSSANT** : Travailler en appui (pousse).")
-            st.write("- Remorqueurs utilisés pour freiner la dérive latérale.")
+            st.success("🏁 **VENT POUSSANT** : Travailler en appui (pousse). Remorqueurs en freins actifs.")
 
 st.markdown(footer_style, unsafe_allow_html=True)
