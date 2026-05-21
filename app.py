@@ -11,7 +11,7 @@ footer_style = """
     .footer { position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f6; color: #31333F; 
     text-align: center; padding: 10px; font-size: 14px; font-weight: bold; border-top: 2px solid #0073e6; z-index: 100; }
     </style>
-    <div class="footer"><p>© 2026 - Développé par Cpt. Dialmy | Navigation & Docking Expert</p></div>
+    <div class="footer"><p>© 2026 - Développé par Cpt. Dialmy | Navigation & Docking </p></div>
 """
 
 # --- SIDEBAR : CARACTÉRISTIQUES NAVIRE ---
