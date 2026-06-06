@@ -3,21 +3,28 @@ import math
 import pandas as pd
 import numpy as np
 
-# --- CONFIGURATION & STYLE ---
+# --- 1. CONFIGURATION & STYLE ---
 st.set_page_config(page_title="DSS Pilotage - Cpt. Dialmy", page_icon="🚢", layout="wide")
 
 footer_style = """
     <style>
     .footer { position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f6; color: #31333F; 
     text-align: center; padding: 10px; font-size: 14px; font-weight: bold; border-top: 2px solid #0073e6; z-index: 100; }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; }
     </style>
-    <div class="footer"><p>© 2026 - Développé par Cpt. Dialmy | Navigation & Docking </p></div>
+    <div class="footer"><p>© 2026 - Développé par Cpt. Dialmy | Navigation & Docking</p></div>
 """
 
-# --- SIDEBAR : CARACTÉRISTIQUES NAVIRE ---
+# Constantes Physiques Globales
+RHO_AIR = 1.225      # Densité de l'air (kg/m3)
+G = 9806.65          # Conversion Newtons -> Tonnes métriques
+KN_TO_MS = 0.51444   # Nœuds vers m/s
+
+# --- 2. SIDEBAR : CARACTÉRISTIQUES NAVIRE ---
 st.sidebar.header("🚢 Configuration du Navire")
 type_navire = st.sidebar.selectbox("Type de Navire", ["Porte-conteneurs (Grand)", "Pétrolier (VLCC/Suezmax)", "Vraquier (Capesize)", "Méthanier (LNGC)"])
 
+# Dictionnaire des profils par défaut
 ship_defaults = {
     "Porte-conteneurs (Grand)": {"cb": 0.70, "cp": 0.85, "hair": 55.0},
     "Pétrolier (VLCC/Suezmax)": {"cb": 0.85, "cp": 0.70, "hair": 35.0},
@@ -26,122 +33,153 @@ ship_defaults = {
 }
 defaults = ship_defaults[type_navire]
 
-lpp = st.sidebar.number_input("Lpp (m)", value=330.0)
-tirant_air = st.sidebar.number_input("Tirant d'air (m)", value=defaults["hair"])
-draft = st.sidebar.number_input("Tirant d'eau (m)", value=12.5)
-cb = st.sidebar.number_input("Coefficient Cb", value=defaults["cb"])
-cp = st.sidebar.slider("Coefficient de porosité (Cp)", 0.5, 1.0, defaults["cp"])
-puissance_kw = st.sidebar.number_input("Puissance Moteur (kW)", value=45000)
-bow_thruster_kw = st.sidebar.number_input("Bow Thruster (kW)", value=2500)
+with st.sidebar.expander("📐 Dimensions & Hydrodynamique", expanded=True):
+    lpp = st.number_input("Lpp (m)", value=330.0, step=10.0)
+    tirant_air = st.number_input("Tirant d'air (m)", value=defaults["hair"], step=1.0)
+    draft = st.number_input("Tirant d'eau (m)", value=12.5, step=0.5)
+    cb = st.number_input("Coefficient Cb", value=defaults["cb"], step=0.01)
+    cp = st.slider("Porosité Fardage (Cp)", 0.5, 1.0, defaults["cp"], step=0.05)
 
-# Constantes et Conversions
+with st.sidebar.expander("⚙️ Motorisation & Propulseurs", expanded=True):
+    puissance_kw = st.number_input("Puissance Moteur (kW)", value=45000, step=1000)
+    bow_thruster_kw = st.number_input("Bow Thruster (kW)", value=2500, step=100)
+
+# Pré-calculs structurels
 poussee_machine_t = (puissance_kw / 100) * 1.3
 bow_thruster_t = (bow_thruster_kw / 100) * 1.2
-aw_eff = lpp * tirant_air * cp
-sw = lpp * draft
+aw_eff = lpp * tirant_air * cp # Surface fardage effective
+sw = lpp * draft               # Surface latérale sous-marine
 
-st.title("⚓ Système d'Aide à la Décision - Cpt. Dialmy")
+# --- 3. INTERFACE PRINCIPALE ---
+st.title("⚓ Système d'Aide à la Décision (DSS)")
+st.markdown("Outil tactique pour l'évaluation du fardage et l'assistance à la manœuvre d'accostage.")
 
-tabs = st.tabs(["🚀 Navigation (Transit)", "🏗️ Docking Mode (Manœuvre)"])
+tabs = st.tabs(["🚀 Transit & Fardage", "🏗️ Docking (Accostage / Appareillage)"])
 
-# ---------------------------------------------------------
-# ONGLET 1 : NAVIGATION (Transit & Dérive)
-# ---------------------------------------------------------
+# =========================================================
+# ONGLET 1 : TRANSIT & FARDAGE
+# =========================================================
 with tabs[0]:
-    st.header("🌊 Analyse de Dérive en Transit")
+    st.header("🌊 Évaluation du Fardage en Transit")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("💨 Vent")
+        st.subheader("💨 Paramètres Vent")
         vent_moyen = st.slider("Vent moyen (kn)", 0, 60, 20)
-        facteur_rafale = st.slider("Facteur Rafale", 1.0, 2.0, 1.3)
+        facteur_rafale = st.slider("Facteur Rafale", 1.0, 2.0, 1.3, step=0.1)
         v_eff = vent_moyen * facteur_rafale
-        secteur = st.selectbox("Secteur", ["Travers", "Avant", "Arrière"])
+        secteur = st.selectbox("Secteur d'incidence", ["Travers", "Avant", "Arrière"])
         coef_angle = 1.0 if secteur == "Travers" else (0.6 if secteur == "Avant" else 0.4)
 
     with col2:
-        st.subheader("🚢 Vitesse & Courant")
-        v_surface = st.number_input("Vitesse Surface (kn)", value=3.5, min_value=0.1)
-        v_courant = st.number_input("Vitesse Courant (kn)", value=1.0)
+        st.subheader("🚢 Cinématique")
+        v_surface = st.number_input("Vitesse Surface (kn)", value=3.5, min_value=0.1, step=0.5)
+        v_courant = st.number_input("Vitesse Courant (kn)", value=1.0, step=0.2)
         dir_courant = st.selectbox("Direction Courant", ["Portant", "Contraire", "Travers"])
 
     with col3:
-        st.subheader("🎯 Cible")
-        drift_tolere = st.slider("Angle de dérive toléré (°)", 0.5, 15.0, 7.0)
+        st.subheader("🎯 Marge Opérationnelle")
+        limite_deviation = st.slider("Tolérance de déviation (°)", 1.0, 15.0, 7.0, step=0.5, help="Limite à partir de laquelle le vent prend le dessus sur la gouverne.")
 
-    # Calculs Physiques
-    force_vent_t = (0.5 * 1.225 * ((v_eff * 0.514)**2) * aw_eff * coef_angle) / 9806
-    kb = 0.1 * (cb + 0.5 * draft / lpp) * math.sqrt(aw_eff / sw) * coef_angle
+    # --- MOTEUR PHYSIQUE ---
+    # Force du vent en tonnes
+    force_vent_t = (0.5 * RHO_AIR * ((v_eff * KN_TO_MS)**2) * aw_eff * coef_angle) / G
     
-    # Vitesse Critique : Vitesse à laquelle la dérive dépasse la tolérance
-    v_critique = v_eff * math.sqrt(kb / drift_tolere)
-    crab_angle = math.degrees(math.atan((v_eff * 0.15 * coef_angle) / v_surface))
-    force_requise_rem = max(0.0, force_vent_t * (1 - (v_surface / v_critique)**2)) if v_surface < v_critique else 0.0
+    # Calcul de la Vitesse Critique de Gouverne
+    kb = 0.1 * (cb + 0.5 * draft / lpp) * math.sqrt(aw_eff / sw) * coef_angle
+    v_critique = v_eff * math.sqrt(kb / limite_deviation) if limite_deviation > 0 else 0
+    
+    # Besoin en remorquage si la vitesse est trop faible
+    if v_surface < v_critique and v_critique > 0:
+        force_requise_rem = max(0.0, force_vent_t * (1 - (v_surface / v_critique)**2))
+    else:
+        force_requise_rem = 0.0
 
     st.divider()
     
-    # --- NOUVELLE SECTION : DIAGNOSTIC D'AUTONOMIE ---
-    st.subheader("📋 Diagnostic de Tenue de Route")
+    # --- DIAGNOSTIC DE ROUTE ---
+    st.subheader("📋 Diagnostic de Tenue de Cap")
     diag1, diag2 = st.columns([1, 2])
     
     with diag1:
-        st.metric("Vitesse Critique", f"{round(v_critique, 1)} kn", help="Vitesse minimale pour tenir la dérive sans aide.")
-        st.metric("Crab Angle", f"{round(crab_angle, 1)}°")
+        st.metric("Vitesse Limite (Steerage)", f"{v_critique:.1f} kn", help="Vitesse minimale requise pour compenser le fardage sans aide.")
+        st.metric("Force Vent Subie", f"{force_vent_t:.1f} T")
 
     with diag2:
         if v_surface >= v_critique:
-            st.success(f"✅ **Vitesse Suffisante** : À {v_surface} kn, le navire génère assez de portance hydrodynamique pour maintenir la dérive sous les {drift_tolere}°.")
-            st.info(f"Marge de sécurité : {round(v_surface - v_critique, 1)} kn au-dessus du seuil critique.")
+            st.success(f"✅ **Vitesse de sécurité atteinte** : À {v_surface} kn, le flux d'eau sur le safran est suffisant pour contrer la force du vent.")
+            st.info(f"Marge de vitesse : +{v_surface - v_critique:.1f} kn.")
         else:
-            manque_v = round(v_critique - v_surface, 1)
-            st.error(f"⚠️ **Vitesse Insuffisante** : La dérive réelle dépassera {drift_tolere}°. Le navire 'tombe' sous le vent.")
-            st.write(f"Pour stabiliser le navire, vous devez soit :")
-            st.write(f"- Augmenter la vitesse de **{manque_v} kn**.")
-            st.write(f"- Faire appel à une poussée de remorquage de **{round(force_requise_rem)} T**.")
+            manque_v = v_critique - v_surface
+            st.error(f"⚠️ **Perte d'efficacité gouverne** : Vitesse insuffisante pour contrer le fardage.")
+            st.markdown(f"**Actions correctives requises :**")
+            st.markdown(f"- 🟢 Augmenter la vitesse d'au moins **{manque_v:.1f} kn**.")
+            st.markdown(f"- 🚜 Ou engager une force de remorquage (Escort) de **{force_requise_rem:.1f} T**.")
 
-    # GRAPHIQUE D'ANALYSE
-    st.subheader("📈 Courbe de Puissance vs Vitesse")
+    # --- GRAPHIQUE ---
+    st.subheader("📈 Profil d'Assistance (Traction requise vs Vitesse)")
     v_range = np.linspace(0.5, max(12.0, v_critique + 2), 50)
     f_rem = [max(0.0, force_vent_t * (1 - (v / v_critique)**2)) if v < v_critique else 0.0 for v in v_range]
-    df_plot = pd.DataFrame({"Vitesse (kn)": v_range, "Besoin Remorquage (T)": f_rem})
-    st.line_chart(df_plot.set_index("Vitesse (kn)"))
+    
+    df_plot = pd.DataFrame({"Vitesse (kn)": v_range, "Force de Remorquage Requise (T)": f_rem}).set_index("Vitesse (kn)")
+    st.area_chart(df_plot, color="#ff4b4b", use_container_width=True)
 
-# ---------------------------------------------------------
-# ONGLET 2 : DOCKING MODE (Manœuvre)
-# ---------------------------------------------------------
+# =========================================================
+# ONGLET 2 : DOCKING (Manœuvre)
+# =========================================================
 with tabs[1]:
-    st.header("🛠️ Docking Mode & Tactiques de Quai")
+    st.header("🛠️ Analyse Statique d'Accostage & Appareillage")
     dcol1, dcol2 = st.columns(2)
     
     with dcol1:
-        v_dock = st.slider("Vent au quai (kn)", 0, 60, 15, key="dv")
-        manoeuvre = st.radio("Opération", ["Accostage (Poussant)", "Appareillage (Plaquant)"])
+        v_dock = st.slider("Vent traversier au quai (kn)", 0, 60, 15, key="dv")
+        manoeuvre = st.radio("Type d'Opération", ["Accostage (Vent Poussant)", "Appareillage (Vent Plaquant)"])
     with dcol2:
-        tug_dock_bp = st.number_input("BP par remorqueur (T)", value=60, key="dock_bp")
-        nb_tugs_dock = st.slider("Nombre de remorqueurs", 0, 4, 2, key="dock_nb")
+        tug_dock_bp = st.number_input("Bollard Pull par remorqueur (T)", value=60, step=5, key="dock_bp")
+        nb_tugs_dock = st.slider("Nombre de remorqueurs engagés", 0, 4, 2, key="dock_nb")
 
-    force_stat = (0.5 * 1.225 * ((v_dock * 0.514)**2) * aw_eff * 1.0) / 9806
-    bilan = (bow_thruster_t + (nb_tugs_dock * tug_dock_bp)) - force_stat
+    # Calculs Statiques
+    force_stat = (0.5 * RHO_AIR * ((v_dock * KN_TO_MS)**2) * aw_eff) / G
+    total_push_pull = bow_thruster_t + (nb_tugs_dock * tug_dock_bp)
+    bilan = total_push_pull - force_stat
 
     st.divider()
+    
+    # Affichage dynamique des métriques
     res1, res2, res3 = st.columns(3)
-    res1.metric("Force Vent", f"{round(force_stat)} T")
-    res2.metric("Bow Thruster", f"{round(bow_thruster_t)} T")
-    res3.metric("Marge Sécurité", f"{round(bilan)} T", delta=f"{round(bilan)} T")
+    res1.metric("🌪️ Pression du Vent", f"{force_stat:.1f} T")
+    res2.metric("⚙️ Force Totale Engagée", f"{total_push_pull:.1f} T", help="Bow Thruster + Remorqueurs")
+    
+    if bilan >= 0:
+        res3.metric("✅ Marge de Sécurité", f"{bilan:.1f} T", delta=f"Surplus de {bilan:.1f} T")
+    else:
+        res3.metric("❌ Déficit de Force", f"{bilan:.1f} T", delta=f"Manque {abs(bilan):.1f} T", delta_color="inverse")
 
-    st.subheader("📍 Recommandations de Placement")
+    # --- RECOMMANDATIONS TACTIQUES ---
+    st.subheader("📍 Tactique & Positionnement")
     t1, t2 = st.columns(2)
+    
     with t1:
-        st.markdown("### 🗺️ Positionnement")
+        st.markdown("### 🗺️ Allocation des forces")
         if nb_tugs_dock >= 2:
-            st.write("- **Tug 1 :** Épaulement Avant / **Tug 2 :** Hanche Arrière.")
+            st.info("**Configuration Standard :**\n- **Tug 1 :** Épaulement Avant (Équilibrage avec Bow Thruster)\n- **Tug 2 :** Hanche Arrière (Contrôle du pivot)")
         elif nb_tugs_dock == 1:
-            st.write("- **Tug unique :** À l'Arrière. Le Bow Thruster gère l'avant.")
-    with t2:
-        st.markdown("### ⚙️ Tactique")
-        if manoeuvre == "Appareillage (Plaquant)":
-            st.error("🚩 **VENT PLAQUANT** : Travailler à la tire (capelé). Décoller l'arrière en priorité.")
+            st.warning("**Configuration Restreinte :**\n- **Tug unique :** À positionner à la Hanche Arrière.\n- L'étrave doit être gérée exclusivement au Bow Thruster.")
         else:
-            st.success("🏁 **VENT POUSSANT** : Travailler en appui (pousse). Remorqueurs en freins actifs.")
+            st.error("**Manœuvre en propre :** Aucun remorqueur. Forte dépendance au Bow Thruster et à la cinématique.")
 
+    with t2:
+        st.markdown("### ⚙️ Consignes Opérationnelles")
+        if "Plaquant" in manoeuvre:
+            if bilan < 0:
+                st.error("🚨 **IMPOSSIBLE D'APPAREILLER** : La force de décollage (Tugs + BT) est inférieure à la pression du vent. Le navire restera plaqué aux défenses.")
+            else:
+                st.warning("🚩 **VENT PLAQUANT** : Travailler à la tire (capelé). Priorité au décollage de la poupe pour engager l'hélice en sécurité.")
+        else:
+            if bilan < 0:
+                st.error("🚨 **RISQUE D'AVARIE** : Force de retenue insuffisante. L'impact sur les défenses dépassera les limites tolérées.")
+            else:
+                st.success("🏁 **VENT POUSSANT** : Travailler en appui (pousse). Remorqueurs en freins actifs pour maîtriser la vitesse d'approche latérale.")
+
+# Injection du Footer
 st.markdown(footer_style, unsafe_allow_html=True)
